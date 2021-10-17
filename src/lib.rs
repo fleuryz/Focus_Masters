@@ -21,7 +21,6 @@ pub mod gui_lol;
 pub mod support;
 pub mod lol;
 pub mod lol_structs;
-pub mod bluetooth;
 pub mod empatica;
 pub mod db_structures;
 

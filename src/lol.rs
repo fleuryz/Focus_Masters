@@ -14,7 +14,7 @@ use std::time::Duration;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use crate::sessao::Sessao;
-use crate::lol_structs::{MatchlistDto, ChampionMasteryDTO, ChampionList, MatchTimelineDto, MatchReferenceDto, MatchDto};
+use crate::lol_structs::{ChampionMasteryDTO, ChampionList, MatchTimelineDto, MatchDto, MetadataDto};
 use crate::gui::{SearchData, DisplayData};
 use crate::empatica;
 use crate::db_structures::*;
@@ -149,7 +149,7 @@ impl Settings{
 
 #[derive(Debug)]
 pub struct LoLSession{
-    pub id: u64,
+    pub id: String,
     start_time: time::Tm,
     end_time: time::Tm,
     session_number: usize,
@@ -162,7 +162,7 @@ pub struct LoLSession{
 impl LoLSession{
     pub fn new(username: &str, start_time: time::Tm, end_time: time::Tm, session_number: usize, keys: Vec<LoLData>, affections: Vec<LoLData>) -> LoLSession{
         let session = LoLSession{
-            id: 0,
+            id: format!("0"),
             start_time,
             end_time,
             session_number,
@@ -243,7 +243,7 @@ impl LoLSession{
         Ok(())
     }
 
-    pub fn load_session(username: &str, session: u64) -> Result<LoLSession, Box<dyn Error>>{
+    pub fn load_session(username: &str, session: i64) -> Result<LoLSession, Box<dyn Error>>{
         let file_location = format!("./Data/LoL/Sessions/{}/{}/info.lkans", username, session);
         let mut file = File::open(file_location)?;
         
@@ -255,7 +255,7 @@ impl LoLSession{
         let end_time = time::strptime(data.next().unwrap(), "%Y/%m/%d/%H/%M/%S/%f")?;
         let session_number: usize = data.next().unwrap().parse()?;
         let processed: bool = data.next().unwrap().parse()?;
-        let id: u64 = data.next().unwrap().parse()?;
+        let id = format!("{}", data.next().unwrap());
         
         Ok(LoLSession{id, start_time,end_time,session_number,processed, keys: Vec::new(), affections: Vec::new(), loaded: false})
     }
@@ -269,7 +269,7 @@ impl LoLSession{
                     if let Ok(file_type) = entry.file_type() {
                         // Now let's show our entry's file type!
                         //println!("{:?}: {:?} ,is_dir: {:?}", entry.path(), entry.path().file_stem(), file_type.is_dir());
-                        let session_number: u64 = entry.path().file_stem().expect("Error in stem.").to_str().expect("Error in stem as str").parse().expect("Error parsing stem.");
+                        let session_number: i64 = entry.path().file_stem().expect("Error in stem.").to_str().expect("Error in stem as str").parse().expect("Error parsing stem.");
                         if let Ok(session) = LoLSession::load_session(username, session_number){
                             sessions.push(session);
                         }
@@ -319,7 +319,7 @@ impl LoLSession{
                     self.affections.push(LoLData::get_data(&affections_each_string));
                 //}
             }
-            println!("depois de dar o load: {}", self.affections.len());
+            //println!("depois de dar o load: {}", self.affections.len());
             self.loaded = true;
 
             self.save(username);
@@ -346,8 +346,8 @@ impl LoLSession{
         return_affections
     }
 
-    pub fn update_id(&mut self, username: &str, id: u64){
-        self.id = id;
+    pub fn update_id(&mut self, username: &str, id: &str){
+        self.id = format!("{}", id);
         self.save(username);
     }
 }
@@ -528,13 +528,13 @@ impl LoLU {
             lane_stats: Vec::new(),
             timelines: Vec::new(),
         };
-
+        
         //Vou colocar aqui uns testes com o mongoDB mas é para apagar depois. O mongodb vai ser criado junto com o usuário e os dados vão ser adicionados quando a sessão for processada
         let future = user.connect_to_db();
         user.db = Some(block_on(future).unwrap());
 
-        block_on(user.get_matches_db(10));
-        block_on(user.get_champions_db(5));
+        block_on(user.get_matches_db(20));
+        block_on(user.get_champions_db(10));
         block_on(user.get_lanes_db());
 
         user.process_matches();
@@ -585,6 +585,7 @@ impl LoLU {
                     break;
                 }
                 unsafe { winapi::um::synchapi::SleepEx(1,1); }
+                //thread::sleep(std::time::Duration::from_millis(10));
             }
 
             let (s_keys_1, r_keys_1) = mpsc::channel();
@@ -645,6 +646,7 @@ impl LoLU {
                         return;
                     }
                     unsafe { winapi::um::synchapi::SleepEx(1,1); }
+                    //thread::sleep(std::time::Duration::from_millis(10));
                 }
             }).expect("Error starting thread to record keys");
 
@@ -704,7 +706,7 @@ impl LoLU {
                     }
                     Ok(())
                 }
-                fn fechando(nada: u64) -> Result<(), Fault>{
+                fn fechando(nada: i64) -> Result<(), Fault>{
                     unsafe {
                         finalizar = true;
                     }
@@ -921,7 +923,7 @@ impl LoLU {
                             winuser::VK_LBUTTON => "LEFT MOUSE".into(),
                             winuser::VK_RBUTTON => "RIGHT MOUSE".into(),
                             190|110 => ".".into(),
-                            _ => (i as u8 as char).to_string()
+                            _ => (i as i64 as char).to_string()
                         };
                         values.push(format!("{}-KB-{}", LoLU::from_tm(time::now()), key));
                     }
@@ -1023,19 +1025,17 @@ impl LoLU {
                     if session.processed{
                         println!("This session was already processed. Nothing was done.");
                     }else{
-                        println!("This session was already processed. But I will continue to test something");
                         session.load_data(&self.user.name)?;
                         session.affections.append(&mut e4_data.get_data_vec(tag_number)?);
                         let timeline_collection = self.db.as_ref().unwrap().collection("Timeline");
 
-                        let mut cursor = block_on(timeline_collection.find(doc! {"_id": session.id as i64}, None))?;
+                        let mut cursor = block_on(timeline_collection.find(doc! {"_id": session.id.as_str()}, None))?;
                         let mut match_data = None;
                         while let Some(result) = block_on(cursor.next()){
                             //println!("result: {:?}", result);
                             match result {
                                 Ok(document) => {
                                     let mut match_timeline = MatchTimeline::from_document(document);
-                                    println!("Achou o documento, já já é para rolar");
                                     match_timeline.bvp = e4_data.bvp.get_lol_data("bvp", start_time, end_time)?;
                                     match_timeline.eda = e4_data.eda.get_eda_data(start_time, end_time)?;
                                     let heart_rate_response = e4_data.bvp.get_hrv_data(start_time, end_time)?;
@@ -1055,7 +1055,7 @@ impl LoLU {
                         if match_data.is_some(){
                             let document = match_data.unwrap().get_bson().as_document().unwrap().clone();
                             //println!("document: {}", document);
-                            block_on(timeline_collection.find_one_and_replace(doc! {"_id": session.id as i64}, document, None))?;
+                            block_on(timeline_collection.find_one_and_replace(doc! {"_id": session.id.as_str()}, document, None))?;
                             session.processed = true;
                             session.save(&self.user.name)?;
                             session.delete_data(&self.user.name)?;
@@ -1088,107 +1088,35 @@ impl LoLU {
         // Get a handle to a collection in the database.
         let db_collection = db.collection("General");
 
-        /*let collection = db.collection("Timeline");
-        
-        //Retirar tudo que vem depois disso
-        let test_session = LoLSession{
-            start_time: time::now(),
-            end_time: time::now(),
-            session_number: 0,
-            values: Vec::new(),
-            processed: false,
-        };
-        //LoLSession::new("Intsuyou", time::now(), time::now(), 1, Vec::new());
-        
-        let matches = LoLU::get_matches_id(&self.user.accountId).unwrap();
-        let mut i = 0;
-        for each_match in &matches.matches{
-            println!("{}:{:?}", i, each_match);
-            i = i +1;
-        }
-        //println!("{:?}", matches.matches[64]);
-        //let match_reference = &matches.matches[matches.endIndex-1];
-
-        for match_ref in matches.matches{
-            if match_ref.role == "NONE"{
-                continue;
-            }
-            let match_data = LoLU::get_match_timeline(match_ref.gameId).unwrap();
-
-            let index = match_data.participantIdentities.iter().position(|id| id.player.currentAccountId == self.user.accountId).unwrap();
-            //let player_participant_id = search_result.unwrap().participantId;
-            let player_participant_id =  match_data.participantIdentities[index].participantId;
-
-            let index = match_data.participants.iter().position(|participant| participant.participantId == player_participant_id).unwrap();
-            //let player = &match_data.participants.into_iter().find(|participant| participant.participantId == player_participant_id);
-            let player = &match_data.participants[index];
-
-
-            let doc = bson! ({  
-                                "timestamp": ,
-                                "matchID": ,
-                                "MatchParticipantFrameDto": ,
-
-                            /*"match_time" : match_data.gameDuration,
-                            "start_date" : Sessao::data_string(test_session.start_time),
-                            "season": match_data.seasonId,
-                            "team_stats": match_data.get_teams_bson(),
-                            "champion": player.championId,
-                            "stats": match_data.get_participants_bson(),
-                            "lane": player.timeline.lane.clone() */});
-
-
-
-            collection.insert_one((*doc.as_document().unwrap()).clone(), None).await?;
-        }*/
-
-
-        /*let docs = vec![
-            doc! { "title": "1984", "author": "George Orwell" },
-            doc! { "title": "Animal Farm", "author": "George Orwell" },
-            doc! { "title": "The Great Gatsby", "author": "F. Scott Fitzgerald" },
-        ];
-
-        // Insert some documents into the "mydb.books" collection.
-        collection.insert_many(docs, None).await?;*/
-
-        // List the names of the collections in that database.
-        /*for collection_name in db.list_collection_names(None).await.unwrap() {
-            println!("collection_name: {}", collection_name);
-        }*/
-
-
-
-        //let future = LoLU::add_general_to_db(db, test_session, &matches.matches[0]);
-        //block_on(future);
-
         return mongoResult::Ok(db);
     }
 
     pub fn process_matches(&mut self){
         //Filtrar partidas que não são do summoner's rift
-        let mut matches = LoLU::get_matches_id(&self.user.accountId).unwrap();
-        matches.matches.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
-    
-        let pos_index = matches.matches.iter().position(|x| x.timestamp > self.last_process_time);
-
-        if let Some(index) = pos_index {
-            matches.matches.drain(0..index);
-        }else{
-            matches.matches.clear();
-        }
+        let match_ids = LoLU::get_matches_id(&self.user.puuid, 0, 20).unwrap();
 
         let mut new_last_process_time = self.last_process_time;
 
-        //for i in matches.matches.len()-5..matches.matches.len(){
-        //TODO adicionar aqui algo que já vá adicionando os stats para cada partida
-            //let each_match = matches.matches.last().unwrap();
-            //let each_match = &matches.matches[i];
-        for each_match in matches.matches{
-            //println!("partida: {:?}", each_match);
-            /*if (each_match.role == "NONE" && each_match.role == "NONE") || each_match.lane == "NONE"{
+        for each_match_id in match_ids{
+            let mut each_match = None;
+            if self.matches.iter().any(|x| x._id.eq(&each_match_id)){
                 continue;
-            }*/
+            }
+            for _error_count in 0..5 {
+                each_match = LoLU::get_match(&each_match_id, self.user.name.as_str(), &self.user.puuid);
+    
+                if each_match.is_some(){
+                    break;
+                }
+            }
+            //if (each_match.role == "NONE" && each_match.role == "NONE") || each_match.lane == "NONE"{
+              //  continue;
+            //}
+            if each_match.is_none(){
+                continue;
+            }
+                
+            let (each_match_data, each_match_stats): (MatchData, MatchStats) = each_match.unwrap();
             
             let session_to_process = self.last_processed_session + 1;
             let last_session_time = match self.last_processed_session{
@@ -1201,41 +1129,24 @@ impl LoLU {
             }else{
                 this_session_time = LoLU::tm_to_milisec(self.sessions[session_to_process-1].start_time);
             }
+            new_last_process_time = each_match_data.start_date as i64;
             if session_to_process <= self.sessions.len() &&
-                LoLU::is_close_tm(this_session_time, each_match.timestamp, 600) &&
+                LoLU::is_close_tm(this_session_time, each_match_data.start_date as i64, 600) &&
                 //LoLU::tm_to_milisec(self.sessions[session_to_process].start_time) <= each_match.timestamp &&
-                last_session_time <= each_match.timestamp 
+                last_session_time <= each_match_data.start_date as i64
             {
                 //println!("Essa partida faz parte de sessão");
-                if block_on(self.add_general_to_db(&each_match, session_to_process, this_session_time as u64, LoLU::tm_to_milisec(self.sessions[session_to_process-1].end_time) as u64)).is_some(){
-                    let current_match = self.matches.last().unwrap();
-                    let current_match_stats = self.matches_stats.last().unwrap();
-                    let mut colleagues_ids: Vec<u8> = Vec::new();
-                    for stat in &current_match_stats.participant_stats{
-                        if stat.teamId == current_match.team_id{
-                            colleagues_ids.push(stat.participantId);
-                        }
-                    }
-                    block_on(self.add_timeline_to_db(&each_match, session_to_process, current_match.participant_id, current_match.team_id, colleagues_ids));
-                }
+                let match_id = each_match_data._id.clone();
+                block_on(self.add_general_to_db(each_match_data, each_match_stats, session_to_process, this_session_time as i64, LoLU::tm_to_milisec(self.sessions[session_to_process-1].end_time) as i64));
+                block_on(self.add_timeline_to_db(match_id.as_str(), session_to_process));
                 
                 self.last_processed_session = session_to_process;
             }else{
                 //println!("Essa partida não faz parte de sessão");
-                if block_on(self.add_general_to_db(&each_match, 0, 0, 0)).is_some(){
-                    let current_match = self.matches.last().unwrap();
-                    let current_match_stats = self.matches_stats.last().unwrap();
-                    let mut colleagues_ids: Vec<u8> = Vec::new();
-                    for stat in &current_match_stats.participant_stats{
-                        if stat.teamId == current_match.team_id{
-                            colleagues_ids.push(stat.participantId);
-                        }
-                    }
-                    block_on(self.add_timeline_to_db(&each_match, 0, current_match.participant_id, current_match.team_id, colleagues_ids));
-                }
-                
+                let match_id = each_match_data._id.clone();
+                block_on(self.add_general_to_db(each_match_data, each_match_stats, 0, 0, 0));
+                block_on(self.add_timeline_to_db(match_id.as_str(), 0));                
             }
-            new_last_process_time = each_match.timestamp;
         }
         block_on(self.add_stats_to_db());
 
@@ -1312,13 +1223,13 @@ impl LoLU {
     }
 
     pub fn create_champion_stats(&mut self, current_match: &MatchData, current_match_stats: &MatchStats){
-        let champion_stats_index = self.champion_stats.iter().position(|x| x.champion == current_match.champion && x.stats.season == current_match.season);
+        let champion_stats_index = self.champion_stats.iter().position(|x| x.champion == current_match.champion);
         let mut champion_stats: &mut ChampionStats;
         let total_champion_stats = self.champion_stats.len();
         if let Some(index) = champion_stats_index {
             champion_stats = &mut self.champion_stats[index];
         }else{
-            self.champion_stats.push(ChampionStats::new(current_match.champion, current_match.username.as_str(), current_match.season));
+            self.champion_stats.push(ChampionStats::new(current_match.champion, current_match.username.as_str()));
             champion_stats = &mut self.champion_stats[total_champion_stats];
         }
 
@@ -1327,18 +1238,18 @@ impl LoLU {
     }
 
     pub fn create_lane_stats(&mut self, current_match: &MatchData, current_match_stats: &MatchStats){
-        let match_stats_index = self.lane_stats.iter().position(|x| x.role == current_match.role && x.stats.season == current_match.season);
+        let match_stats_index = self.lane_stats.iter().position(|x| x.role == current_match.role);
         let mut lane_stats: &mut LaneStats;
         let total_lane_stats = self.lane_stats.len();
         if let Some(index) = match_stats_index {
             lane_stats = &mut self.lane_stats[index];
         }else{
-            self.lane_stats.push(LaneStats::new(&current_match.role, current_match.username.as_str(), current_match.season));
+            self.lane_stats.push(LaneStats::new(&current_match.role, current_match.username.as_str()));
             lane_stats = &mut self.lane_stats[total_lane_stats];
         }
 
         
-        let participant_index = current_match_stats.participant_stats.iter().position(|x| x.participantId == current_match.participant_id).unwrap();
+        let participant_index = current_match_stats.participant_stats.iter().position(|x| x.participantId.eq(&current_match.participant_id)).unwrap();
         //let participant_team = current_match.team_stats[participant_index].teamId;
 
         if !lane_stats.champions.contains_key(&(current_match_stats.participant_stats[participant_index].championId as u32)) {
@@ -1418,7 +1329,7 @@ impl LoLU {
         time_1 <= (time_2 + closeness) && time_1 >= (time_2 - closeness)
     }
 
-    pub fn duration_to_string(duration: u64) -> String{
+    pub fn duration_to_string(duration: i64) -> String{
         let seconds = (duration/1000)%60;
         let minutes = (duration/60000)%60;
         let hours = duration/3600000;
@@ -1434,10 +1345,10 @@ impl LoLU {
             summonerName = username,
             api_key = api_key);
         
-        println!("{}", request_url);
+       //println!("{}", request_url);
         let response  = reqwest::blocking::get(&request_url)?.json::<User>();
         //let response  = reqwest::blocking::get(&request_url)?.text()?;
-        println!("{:?}", response);
+        //println!("{:?}", response);
         response
     }
 
@@ -1520,39 +1431,39 @@ impl LoLU {
         ids
     }
 
-    pub fn get_matches_id(accountId: &str) ->reqwest::Result<MatchlistDto>{
+    pub fn get_matches_id(puuid: &str, first: i64, count: i64) ->reqwest::Result<Vec<String>>{
         let mut arquivo = fs::File::open("./assets/lol/API.txt").expect("Erro ao abrir arquivo de teste.");
         let mut api_key = String::new();
         arquivo.read_to_string(&mut api_key).unwrap();
-        let request_url = format!("https://br1.api.riotgames.com/lol/match/v4/matchlists/by-account/{encryptedAccountId}?api_key={api_key}",
-        encryptedAccountId = accountId,
-        api_key = api_key);
+        let request_url = format!("https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}&api_key={api_key}",
+            puuid = puuid,
+            start = first,
+            count = count,
+            api_key = api_key);
 
         //println!("request_url: {:?}", request_url);
 
-        let response: reqwest::Result<MatchlistDto> = reqwest::blocking::get(&request_url)?.json::<MatchlistDto>();
-        //let response = reqwest::blocking::get(&request_url)?;
+        //let response: reqwest::Result<MatchlistDto> = reqwest::blocking::get(&request_url)?.json::<MatchlistDto>();
+        let response = reqwest::blocking::get(&request_url)?;
         //println!("response: {:?}", response);
 
-        let end_time = time::now();
+        //let end_time = time::now();
 
         /*println!("response: {:?}", response);
         println!("time: {:?}", end_time);
         println!("timespec: {:?}", end_time.to_timespec());*/
 
-        response
-        //response.json::<MatchlistDto>()
+        response.json::<Vec<String>>()
     }
 
-    pub fn get_match(game_id: u64, username: &str, account_id: &str, session: usize) -> Option<(MatchData, MatchStats)>{
+    pub fn get_match(game_id: &str, username: &str, account_puuid: &str) -> Option<(MatchData, MatchStats)>{
         let mut arquivo = fs::File::open("./assets/lol/API.txt").expect("Erro ao abrir arquivo de teste.");
         let mut api_key = String::new();
         arquivo.read_to_string(&mut api_key).unwrap();
 
-        let request_url = format!("https://br1.api.riotgames.com/lol/match/v4/matches/{matchId}?api_key={api_key}",
-            matchId = game_id,
-            api_key = api_key
-        );
+        let request_url = format!("https://americas.api.riotgames.com/lol/match/v5/matches/{game_id}?api_key={api_key}",
+            game_id = game_id,
+            api_key = api_key);
 
         //println!("request: {}", request_url);
 
@@ -1564,37 +1475,49 @@ impl LoLU {
         let response_text: String = response.text().expect("Error converting response to string.");
 
         //println!("response: {:?}", reqwest::blocking::get(&request_url).unwrap().text().unwrap().get(2922..3002) );
-
+        //println!("\n\nresponse: {:?}\n\n", response_text);
         //response
 
         if response_text.contains("TUTORIAL_MODULE"){
-            //println!("{:?}", response_text);
+
+            println!("Should not fetch: {:?}", response_text);
             return None
         }
 
         let match_data: std::result::Result<MatchDto, serde_json::error::Error> = serde_json::from_str(&response_text);
 
         match match_data{
-            Ok(match_data) => Some((MatchData::new(&match_data, username, account_id, session as u32), MatchStats::new(&match_data, username, account_id))),
+            Ok(match_data) => Some((MatchData::new(&match_data, username, account_puuid), MatchStats::new(&match_data, username, account_puuid))),
             Err(err) => {
                 println!("Error: {:?}", err);
                 None
             }
         }
 
+        /*match match_data{
+            Ok(match_data) => Some((MatchData::new(&match_data, username, account_id, session as u32), MatchStats::new(&match_data, username, account_id))),
+            Err(err) => {
+                println!("Error: {:?}", err);
+                None
+            }
+        }
+        Option<(MatchData, MatchStats)>*/
+
         
         //Some(MatchData::new(&reqwest::blocking::get(&request_url).expect("Error getting match data").json::<MatchDto>().unwrap(), session, account_id))
     }
 
-    pub fn get_match_timeline(game_id: u64, username: &str, session: u32, participant_id: u8, team_id: u8, colleagues_ids:Vec<u8>, keys: Vec<LoLData>, facial_inferings: Vec<LoLData>) -> Option<MatchTimeline>{
+    pub fn get_match_timeline(game_id: &str, username: &str, session: u32, participant_id: i64, team_id: i64, colleagues_ids:Vec<i64>, keys: Vec<LoLData>, facial_inferings: Vec<LoLData>) -> Option<MatchTimeline>{
         let mut arquivo = fs::File::open("./assets/lol/API.txt").expect("Erro ao abrir arquivo de teste.");
         let mut api_key = String::new();
         arquivo.read_to_string(&mut api_key).unwrap();
 
-        let request_url = format!("https://br1.api.riotgames.com/lol/match/v4/timelines/by-match/{matchId}?api_key={api_key}",
+        let request_url = format!("https://americas.api.riotgames.com/lol/match/v5/matches/{matchId}/timeline?api_key={api_key}",
             matchId = game_id,
             api_key = api_key
         );
+
+        //println!("request: {}", request_url);
 
         let response = reqwest::blocking::get(&request_url).expect("Error getting match data");
         
@@ -1602,6 +1525,7 @@ impl LoLU {
         let response_text: String = response.text().expect("Error converting response to string.");
 
         //println!("response: {:?}", reqwest::blocking::get(&request_url).unwrap().text().unwrap().get(2922..3002) );
+        //println!("response: {:?}",response_text );
 
         //response
 
@@ -1610,17 +1534,13 @@ impl LoLU {
             return None
         }*/
 
-        let mut match_data: std::result::Result<MatchTimelineDto, serde_json::error::Error> = serde_json::from_str(&response_text);
-        let mut error_count = 0;
-        while match_data.is_err() && error_count < 5{
-            error_count+=1;
-            match_data = serde_json::from_str(&response_text);
-        }
+        let match_data: std::result::Result<MatchTimelineDto, serde_json::error::Error> = serde_json::from_str(&response_text);
         if match_data.is_ok(){
-            Some(MatchTimeline::new(match_data.unwrap(), username, participant_id, team_id, colleagues_ids, game_id, keys, facial_inferings))
+            //TODO arrumar o 0 com o "participant_puuid"
+            Some(MatchTimeline::new(match_data.unwrap().info, username, participant_id, team_id, colleagues_ids, game_id, keys, facial_inferings))
         }else{
             println!("Error: {:?}", match_data.unwrap_err());
-            println!("{:?}", response_text);
+            //println!("{:?}", response_text);
             None
         }
         
@@ -1663,14 +1583,24 @@ impl LoLU {
         
     }
 
-    pub async fn add_timeline_to_db(&mut self, new_match: &MatchReferenceDto, session: usize, participant_id: u8, team_id: u8, colleagues_ids:Vec<u8>){
+    pub async fn add_timeline_to_db(&mut self, match_id: &str, session: usize){
+        let current_match = self.matches.last().unwrap();
+        let current_match_stats = self.matches_stats.last().unwrap();
+        let mut colleagues_ids: Vec<i64> = Vec::new();
+        for stat in &current_match_stats.participant_stats{
+            if stat.teamId == current_match.team_id as i64{
+                colleagues_ids.push(stat.participantId as i64);
+            }
+        }
+        let participant_id = current_match.participant_id;
+        let team_id = current_match.team_id;
         let match_data;
         if session > 0 {
-            self.sessions[session-1].update_id(&self.user.name, new_match.gameId);
+            self.sessions[session-1].update_id(&self.user.name, match_id);
             self.sessions[session-1].load_data(&self.user.name).unwrap();
-            match_data = LoLU::get_match_timeline(new_match.gameId, self.user.name.as_str(), session as u32, participant_id, team_id, colleagues_ids, self.sessions[session-1].get_keys(), self.sessions[session-1].get_affections());
+            match_data = LoLU::get_match_timeline(match_id, self.user.name.as_str(), session as u32, participant_id, team_id, colleagues_ids, self.sessions[session-1].get_keys(), self.sessions[session-1].get_affections());
         }else{
-            match_data = LoLU::get_match_timeline(new_match.gameId, self.user.name.as_str(), session as u32, participant_id, team_id, colleagues_ids, Vec::new(), Vec::new());
+            match_data = LoLU::get_match_timeline(match_id, self.user.name.as_str(), session as u32, participant_id, team_id, colleagues_ids, Vec::new(), Vec::new());
         }
         // Get a handle to a collection in the database.
         let collection = self.db.as_ref().unwrap().collection("Timeline");
@@ -1682,51 +1612,35 @@ impl LoLU {
         }
     }
 
-    pub async fn add_general_to_db(&mut self, new_match: &MatchReferenceDto, session: usize, start_time: u64, end_time: u64)-> Option<()>{
-
+    pub async fn add_general_to_db(&mut self, mut match_data: MatchData, match_stats_data: MatchStats, session: usize, start_time: i64, end_time: i64){
         //let match_reference = &matches.matches[matches.endIndex-1];
-
-        let mut match_data = None;
-
-        for _error_count in 0..5 {
-            match_data = LoLU::get_match(new_match.gameId, self.user.name.as_str(), &self.user.accountId, session);
-
-            if match_data.is_some(){
-                break;
-            }
-        }
         
         // Get a handle to a collection in the database.
         let general_collection = self.db.as_ref().unwrap().collection("General");
         let stats_collection = self.db.as_ref().unwrap().collection("Match_Stats");
 
+        match_data.session = session as u32;
 
-        if match_data.is_some(){
-            let (mut match_data, match_stats_data) = match_data.unwrap();
-            if start_time != 0 && match_data.start_date > start_time{
-                match_data.start_date = start_time;
-            }
-            if end_time > 0{
-                let match_time = end_time - match_data.start_date;
-                if match_data.match_time*1000 < match_time{
-                    match_data.match_time = match_time;
-                }else{
-                    match_data.match_time = match_data.match_time*1000;
-                }
-            }else{
-                match_data.match_time = match_data.match_time*1000;
-            }
-
-            general_collection.insert_one((*match_data.get_bson().as_document().unwrap()).clone(), None).await;
-            stats_collection.insert_one((*match_stats_data.get_bson().as_document().unwrap()).clone(), None).await;
-            self.create_champion_stats(&match_data, &match_stats_data);
-            self.create_lane_stats(&match_data, &match_stats_data);
-            self.matches.push(match_data);
-            self.matches_stats.push(match_stats_data);
-            return Some(())
+        if start_time != 0 && match_data.start_date > start_time{
+            match_data.start_date = start_time;
         }
-        
-        None
+        if end_time > 0{
+            let match_time = end_time - match_data.start_date;
+            if match_data.match_time < match_time{
+                match_data.match_time = match_time;
+            }else{
+                match_data.match_time = match_data.match_time;
+            }
+        }else{
+            match_data.match_time = match_data.match_time;
+        }
+
+        general_collection.insert_one((*match_data.get_bson().as_document().unwrap()).clone(), None).await;
+        stats_collection.insert_one((*match_stats_data.get_bson().as_document().unwrap()).clone(), None).await;
+        self.create_champion_stats(&match_data, &match_stats_data);
+        self.create_lane_stats(&match_data, &match_stats_data);
+        self.matches.push(match_data);
+        self.matches_stats.push(match_stats_data);
     }
 
     pub fn find_matches(&mut self, search_data: &SearchData) -> Result<Vec<usize>, Box<dyn Error>>{
@@ -1813,7 +1727,7 @@ impl LoLU {
         Ok(found_matches_indexes)
     }
 
-    pub fn get_match_stats_db(&mut self, match_id: u64) -> Result<(), Box<dyn Error>>{
+    pub fn get_match_stats_db(&mut self, match_id: &str) -> Result<(), Box<dyn Error>>{
         
         let collection = self.db.as_ref().unwrap().collection("Match_Stats");
         let mut cursor = block_on(collection.find(doc!{"_id": match_id}, None))?;
@@ -1833,7 +1747,7 @@ impl LoLU {
         Err("Could not find Match Stats".into())
     }
 
-    pub fn get_match_timeline_db(&mut self, match_id: u64) -> Result<(), Box<dyn Error>>{
+    pub fn get_match_timeline_db(&mut self, match_id: &str) -> Result<(), Box<dyn Error>>{
         
         let collection = self.db.as_ref().unwrap().collection("Timeline");
         let mut cursor = block_on(collection.find(doc!{"_id": match_id}, None))?;
@@ -1853,7 +1767,7 @@ impl LoLU {
         Err("Could not find Match Timeline".into())
     } 
 
-    pub fn export_video(user_name: &str, session: u32, start_time: u64, match_time: u64, id: u64){
+    pub fn export_video(user_name: &str, session: u32, start_time: i64, match_time: i64, id: &str){
 
         let mut export_video = Command::new("python")
             .args(&[
@@ -1862,7 +1776,7 @@ impl LoLU {
                     &session.to_string(),
                     &start_time.to_string(),
                     &match_time.to_string(),
-                    &id.to_string(),
+                    id,
                 ])
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())

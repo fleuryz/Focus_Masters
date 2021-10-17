@@ -7,7 +7,7 @@ use std::iter::{once, Once, Chain};
 use std::slice::Iter;
 
 use crate::variavel::Variavel;
-use crate::lol_structs::{MatchTimelineDto, MatchDto, TeamStatsDto, ParticipantDto, MatchParticipantFrameDto, MatchEventDto};
+use crate::lol_structs::{MatchDto, ParticipantDto, TeamDto, TimelineInfoDto, MatchParticipantFrameDto, MatchEventDto};
 use crate::sessao::Sessao;
 use crate::lol::LoLU;
 
@@ -28,31 +28,29 @@ impl Id{
 
 #[derive(Clone,Debug, Deserialize)]
 pub struct MatchData{
-    pub _id: u64,
+    pub _id: String,
     pub username: String,
-    pub match_time : u64,
-    pub start_date : u64,
+    pub match_time : i64,
+    pub start_date : i64,
     pub session: u32,
-    pub season: u8,
     pub win: bool,
     pub role: String,
     pub champion: u32,
     pub team: Vec<u32>,
     pub opponents: Vec<u32>,
-    pub participant_id: u8,
-    pub team_id: u8,
+    pub participant_id: i64,
+    pub team_id: i64,
 }
 
 impl MatchData{
 
     pub fn new_empty() -> MatchData{
         MatchData{
-            _id:  0,
+            _id: format!("NONE"),
             username: format!("NONE"),
             match_time: 0,
             start_date: 0,
             session: 0,
-            season: 0,
             win: false,
             role: format!("UNKNOWN"),
             champion: 0,
@@ -63,14 +61,14 @@ impl MatchData{
         }
     }
 
-    pub fn new(match_info: &MatchDto, username: &str, account_id: &str, session: u32) -> MatchData{
-        let player_participant_id =  match_info.participantIdentities.iter().find(|id| id.player.currentAccountId == account_id).unwrap().participantId as u8;
-        let team_id = match_info.participants.iter().find(|x| x.participantId == player_participant_id).unwrap().teamId;
+    pub fn new(match_info: &MatchDto, username: &str, account_puuid: &str) -> MatchData{
+        let player_participant_id =  match_info.info.participants.iter().find(|x| x.puuid.eq(account_puuid)).unwrap().participantId;
+        let team_id = match_info.info.participants.iter().find(|x| x.puuid.eq(account_puuid)).unwrap().teamId;
         let mut player = None;
         let mut opponents = Vec::new();
         let mut team = Vec::new();
-        for participant in &match_info.participants{
-            if participant.participantId == player_participant_id{
+        for participant in &match_info.info.participants{
+            if participant.puuid.eq(account_puuid){
                 player = Some(participant);
             }else{
                 if participant.teamId == team_id{
@@ -82,32 +80,19 @@ impl MatchData{
         }
         //let player = match_info.participants.iter().find(|participant| participant.participantId == player_participant_id).unwrap();
 
-        let role = match player.unwrap().timeline.lane.as_str(){
-            "JUNGLE" | "TOP" | "MIDDLE" => player.unwrap().timeline.lane.clone(),
-            "BOTTOM" | "NONE"=> {
-                match player.unwrap().timeline.role.as_str(){
-                    "DUO_CARRY" => format!("ADC"),
-                    "DUO_SUPPORT" => format!("SUPPORT"),
-                    _ => format!("UNKNOWN"),
-                }
-            },
-            _ => format!("UNKNOWN"),
-        };
-
         MatchData{
-            _id : match_info.gameId,
+            _id : match_info.metadata.matchId.clone(),
             username: format!("{}", username),
-            match_time: match_info.gameDuration,
-            start_date: match_info.gameCreation,
-            session,
-            season: (match_info.seasonId as u8),
-            win: player.unwrap().stats.win,
-            role,
+            match_time: match_info.info.gameDuration,
+            start_date: match_info.info.gameCreation,
+            session: 0,
+            win: player.unwrap().win,
+            role: player.unwrap().teamPosition.clone(),
             champion: (player.unwrap().championId as u32),
             team,
             opponents,
-            participant_id: (player_participant_id as u8),
-            team_id: team_id,
+            participant_id: player_participant_id,
+            team_id: team_id as i64,
 
         }
     }
@@ -118,12 +103,12 @@ impl MatchData{
 
         serde_json::from_str(&document_string).unwrap()
         /*
-        let match_time: u64 = if let Some(match_time) = document.get("match_time").and_then(Bson::as_i64){match_time as u64}else{0};
-        let start_date: u64 = if let Some(start_date) = document.get("start_date").and_then(Bson::as_i64){start_date as u64}else{0};
-        let season: u8 = if let Some(season) = document.get("season").and_then(Bson::as_i64){season as u8}else{0};
+        let match_time: i64 = if let Some(match_time) = document.get("match_time").and_then(Bson::as_i64){match_time as i64}else{0};
+        let start_date: i64 = if let Some(start_date) = document.get("start_date").and_then(Bson::as_i64){start_date as i64}else{0};
+        let season: i64 = if let Some(season) = document.get("season").and_then(Bson::as_i64){season as i64}else{0};
         let lane = if let Some(lane) = document.get("lane").and_then(Bson::as_str){format!("{}",lane)}else{format!("")};
         let champion: u32 = if let Some(champion) = document.get("champion").and_then(Bson::as_i64){champion as u32}else{0};
-        let participant_id: u8 = if let Some(participant_id) = document.get("participant_id").and_then(Bson::as_i64){participant_id as u8}else{0};
+        let participant_id: i64 = if let Some(participant_id) = document.get("participant_id").and_then(Bson::as_i64){participant_id as i64}else{0};
         let stats: Vec<TeamStatsDto> = if let Some(stats) = document.get("stats").and_then(Bson::as_array){MatchData::from_teams_bson(stats)}else{Vec::new()};
         let team_stats: Vec<ParticipantDto> = if let Some(team_stats) = document.get("team_stats").and_then(Bson::as_array){MatchData::from_participants_bson(team_stats)}else{Vec::new()};
         let session: u32 = if let Some(session) = document.get("session").and_then(Bson::as_i64){session as u32}else{0};
@@ -143,19 +128,18 @@ impl MatchData{
 
     pub fn get_bson(&self) -> Bson{
         bson! ({
-            "_id" : self._id,
+            "_id" : self._id.as_str(),
             "username" : self.username.clone(),
             "match_time" : self.match_time,
             "start_date" : self.start_date,
             "session" : self.session,
-            "season": (self.season as u64),
             "win": self.win,
             "role": self.role.clone(),
             "champion": self.champion,
             "team": self.team.clone(),
             "opponents": self.opponents.clone(),
-            "participant_id": (self.participant_id as u64),
-            "team_id": self.team_id as u64,
+            "participant_id": self.participant_id,
+            "team_id": self.team_id as i64,
         })
     }
 
@@ -185,39 +169,28 @@ impl MatchData{
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct MatchStats{
-    pub _id: u64,
+    pub _id: String,
     pub username: String,
-    pub stats: Vec<TeamStatsDto>,
+    pub stats: Vec<TeamDto>,
     pub participant_stats: Vec<ParticipantDto>,
-    pub participant_identities: Vec<ParticipantIdentity>,
 }
 
 impl MatchStats{
     pub fn new_empty() -> MatchStats{
         MatchStats{
-            _id: 0,
+            _id: format!("NONE"),
             username: format!("NONE"),
             stats: Vec::new(),
             participant_stats: Vec::new(),
-            participant_identities: Vec::new(),
         }
     }
 
-    pub fn new(match_info: &MatchDto, username: &str, account_id: &str) -> MatchStats{
-        let mut participant_identities = Vec::new();
-        for identity in &match_info.participantIdentities{
-            participant_identities.push(ParticipantIdentity{
-                participant_id: identity.participantId as u8,
-                player_name: identity.player.summonerName.clone(),
-            });
-        }
-
+    pub fn new(match_info: &MatchDto, username: &str, account_puuid: &str) -> MatchStats{
         MatchStats{
-            _id : match_info.gameId,
+            _id : match_info.metadata.matchId.clone(),
             username : format!("{}", username),
-            stats: match_info.teams.clone(),
-            participant_stats: match_info.participants.clone(),
-            participant_identities,
+            stats: match_info.info.teams.clone(),
+            participant_stats: match_info.info.participants.clone(),
         }
     }
 
@@ -230,11 +203,10 @@ impl MatchStats{
 
     pub fn get_bson(&self) -> Bson{
         bson! ({
-            "_id" : self._id,
+            "_id" : self._id.as_str(),
             "username" : self.username.clone(),
             "stats": self.get_participants_bson(),
             "participant_stats": self.get_teams_bson(),
-            "participant_identities": self.get_identities_bson(),
         })
     }
 
@@ -246,13 +218,6 @@ impl MatchStats{
         participant_bson
     }
 
-    /*pub fn from_participants_bson(participant_bson: &Vec<Bson>) -> Vec<ParticipantDto>{
-        let team_stats: Vec<ParticipantDto> = Vec::new();
-        
-
-        team_stats
-    }*/
-
     pub fn get_teams_bson(&self)-> Vec<Bson>{
         let mut team_bson = Vec::new();
         for team in &self.participant_stats{
@@ -260,33 +225,11 @@ impl MatchStats{
         }
         team_bson
     }
-
-    pub fn get_identities_bson(&self)-> Vec<Bson>{
-        let mut identity_bson = Vec::new();
-        for identity in &self.participant_identities{
-            identity_bson.push(bson!({
-                "participant_id": identity.participant_id as i64,
-                "player_name": identity.player_name.clone(),
-            }));
-        }
-
-        identity_bson
-    }
-
-    /*pub fn from_teams_bson(team_bson: &Vec<Bson>) -> Vec<TeamStatsDto>{
-        let stats: Vec<TeamStatsDto> = Vec::new();
-        //println!("Stats:\n{:?}",team_bson[0]);
-        /*for stat in team_bson {
-            //println!("{:?}", stat);
-        }*/
-
-        stats
-    }*/
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct ParticipantIdentity{
-    pub participant_id: u8,
+    pub participant_id: i64,
     pub player_name: String,
 }
 
@@ -295,16 +238,16 @@ pub struct ChampionStats{
     pub _id: Id,
     pub username: String,
     pub champion: u32,
-    pub stats: SeasonStats,
+    pub stats: GeneralStats,
 }
 
 impl ChampionStats{
-    pub fn new(champion: u32, username: &str, season: u8) -> ChampionStats{
+    pub fn new(champion: u32, username: &str) -> ChampionStats{
         ChampionStats{
             _id: Id::new(format!("")),
             username: format!("{}", username),
             champion,
-            stats: SeasonStats::new(season),
+            stats: GeneralStats::new(),
         }
     }
 
@@ -329,17 +272,17 @@ pub struct LaneStats{
     pub _id: Id,
     pub username: String,
     pub role: String,
-    pub champions: HashMap<u32, u64>,
-    pub stats: SeasonStats,
+    pub champions: HashMap<u32, i64>,
+    pub stats: GeneralStats,
 }
 impl LaneStats{
-    pub fn new(role: &str, username: &str, season: u8) -> LaneStats{
+    pub fn new(role: &str, username: &str) -> LaneStats{
         LaneStats{
             _id: Id::new(format!("")),
             username: format!("{}", username),
             role: format!("{}", role),
             champions: HashMap::new(),
-            stats: SeasonStats::new(season),
+            stats: GeneralStats::new(),
         }
     }
 
@@ -378,22 +321,21 @@ impl LaneStats{
 }
 
 #[derive(Clone,Debug, Deserialize)]
-pub struct SeasonStats{
-    pub matches: u64,
-    pub wins: u64,
-    pub losses: u64,
-    pub kills: u64,
-    pub assists: u64,
-    pub deaths: u64,
+pub struct GeneralStats{
+    pub matches: i64,
+    pub wins: i64,
+    pub losses: i64,
+    pub kills: i64,
+    pub assists: i64,
+    pub deaths: i64,
     pub kda_per_match: f64,
     pub kp_per_match: f64,
     pub gold_percentage_per_match: f64,
-    pub season: u8,
 }
 
-impl SeasonStats{
-    pub fn new(season: u8)-> SeasonStats{
-        SeasonStats{
+impl GeneralStats{
+    pub fn new()-> GeneralStats{
+        GeneralStats{
             matches: 0,
             wins: 0,
             losses: 0,
@@ -403,18 +345,17 @@ impl SeasonStats{
             kda_per_match: 0.0,
             kp_per_match: 0.0,
             gold_percentage_per_match: 0.0,
-            season,
         }
     }
 
-    pub fn fill_stats(&mut self, win: bool, participant_id: u8, current_match: &MatchStats){
-        let participant_index = current_match.participant_stats.iter().position(|x| x.participantId == participant_id).unwrap();
+    pub fn fill_stats(&mut self, win: bool, participant_id: i64, current_match: &MatchStats){
+        let participant_index = current_match.participant_stats.iter().position(|x| x.participantId == (participant_id)).unwrap();
         let participant_team = current_match.participant_stats[participant_index].teamId;
         let mut team_kills = 0;
-        current_match.participant_stats.iter().filter(|x| x.teamId == participant_team).for_each(|x| team_kills += x.stats.kills);
+        current_match.participant_stats.iter().filter(|x| x.teamId == participant_team).for_each(|x| team_kills += x.kills);
         let mut team_gold = 0;
-        current_match.participant_stats.iter().filter(|x| x.teamId == participant_team).for_each(|x| team_gold += x.stats.goldEarned);
-        let mut deaths = current_match.participant_stats[participant_index].stats.deaths;
+        current_match.participant_stats.iter().filter(|x| x.teamId == participant_team).for_each(|x| team_gold += x.goldEarned);
+        let mut deaths = current_match.participant_stats[participant_index].deaths;
 
         self.matches += 1;
         if win{
@@ -436,7 +377,7 @@ impl SeasonStats{
         if deaths <= 0{
             deaths = 1;
         }
-        let ka = (current_match.participant_stats[participant_index].stats.kills + current_match.participant_stats[participant_index].stats.assists) as f64;
+        let ka = (current_match.participant_stats[participant_index].kills + current_match.participant_stats[participant_index].assists) as f64;
         let kda = ka/deaths as f64;
         let kp = ka/team_kills as f64;
         let kda_div = kda/(self.matches as f64);
@@ -447,14 +388,14 @@ impl SeasonStats{
         let kda_per_match = last_kda_div + kda_div;
         let kp_per_match = last_kp_div + kp_div;
 
-        let gold = current_match.participant_stats[participant_index].stats.goldEarned as f64/team_gold as f64;
+        let gold = current_match.participant_stats[participant_index].goldEarned as f64/team_gold as f64;
         let gold_div = gold/(self.matches as f64);
         let last_gold_div = self.kp_per_match*matches_division;
         let gold_percentage_per_match = last_gold_div + gold_div;
 
-        self.kills += current_match.participant_stats[participant_index].stats.kills;
-        self.assists += current_match.participant_stats[participant_index].stats.assists ;
-        self.deaths += current_match.participant_stats[participant_index].stats.kills;
+        self.kills += current_match.participant_stats[participant_index].kills;
+        self.assists += current_match.participant_stats[participant_index].assists ;
+        self.deaths += current_match.participant_stats[participant_index].kills;
         //self.kda_per_match = ((self.kda_per_match*(self.matches-1) as f64) + ((current_match.team_stats[participant_index].stats.kills + current_match.team_stats[participant_index].stats.assists) as f64/current_match.team_stats[participant_index].stats.deaths as f64) as f64)/self.matches as f64;
         self.kda_per_match = kda_per_match;
         self.kp_per_match =  kp_per_match;
@@ -465,25 +406,24 @@ impl SeasonStats{
         bson! ({
             "matches" : self.matches,
             "wins" : self.wins,
-            "losses": (self.losses as u64),
+            "losses": (self.losses as i64),
             "kills": self.kills,
             "assists": self.assists,
             "deaths": self.deaths,
             "kda_per_match": self.kda_per_match,
             "kp_per_match": self.kp_per_match,
             "gold_percentage_per_match": self.gold_percentage_per_match,
-            "season": self.season as u64,
         })
     }
 }
 
 #[derive(Clone,Debug, Deserialize)]
 pub struct MatchTimeline{
-    pub _id: u64,
+    pub _id: String,
     pub username: String,
     //pub session: u32,
     pub frames: Vec<MatchFrame>,
-    pub frame_interval: u64,
+    pub frame_interval: i64,
     pub keys: Vec<LoLData>,
     pub facial_inferings: Vec<LoLData>,
     pub bvp: Vec<LoLData>,
@@ -495,9 +435,8 @@ pub struct MatchTimeline{
     //stress: Vec<LoLData>,
     //flow: Vec<LoLData>,
 }
-
 impl MatchTimeline{
-    pub fn new(match_info: MatchTimelineDto, username: &str, participant_id: u8, team_id: u8, colleagues_ids:Vec<u8>, game_id: u64, keys: Vec<LoLData>, facial_inferings: Vec<LoLData>) -> MatchTimeline{
+    pub fn new(match_info: TimelineInfoDto, username: &str, participant_id: i64, team_id: i64, colleagues_ids:Vec<i64>, game_id: &str, keys: Vec<LoLData>, facial_inferings: Vec<LoLData>) -> MatchTimeline{
 
         //AQUI!!! BUSCAR OS DADOS QUE ESTÃO NO ARQUIVO DATA.LKANS E PROCESSAR O ROSTO
         let mut frames: Vec<MatchFrame> = Vec::new();
@@ -506,7 +445,7 @@ impl MatchTimeline{
             let mut team_frames: Vec<MatchParticipantFrameDto> = Vec::new();
             let mut opposing_team_frames: Vec<MatchParticipantFrameDto> = Vec::new();
             for (_,v) in frame.participantFrames{
-                if v.participantId == participant_id{
+                if v.participantId == participant_id as i64{
                     participant_frame = Some(v);
                 }else if colleagues_ids.contains(&v.participantId){
                     team_frames.push(v);
@@ -516,24 +455,24 @@ impl MatchTimeline{
                 
             }
 
-            let events = frame.events.into_iter().filter(|x| x.is_from_participant(participant_id, team_id)).collect();
+            let events = frame.events.into_iter().filter(|x| x.is_from_participant(participant_id as i64, team_id)).collect();
             
             frames.push(MatchFrame{
                 player_frame: participant_frame.unwrap().clone(),
                 team_frames: team_frames,
                 opposing_team_frames: opposing_team_frames,
                 events: events,
-                timestamp: frame.timestamp as u64,
+                timestamp: frame.timestamp as i64,
             });
         }
 
 
         MatchTimeline{
-            _id : game_id,
+            _id : format!("{}", game_id),
             username: format!("{}", username),
             //session,
             frames: frames,
-            frame_interval: match_info.frameInterval as u64,
+            frame_interval: match_info.frameInterval as i64,
             keys,
             facial_inferings,
             bvp: Vec::new(),
@@ -547,7 +486,7 @@ impl MatchTimeline{
 
     pub fn get_bson(&self) -> Bson{
         bson! ({
-            "_id" : self._id,
+            "_id" : self._id.as_str(),
             "username" : self.username.clone(),
             //"session" : self.session,
             "frames" : self.get_frames_bson(),
@@ -586,7 +525,7 @@ impl MatchTimeline{
         serde_json::from_str(&document_string).unwrap()
     }
 
-    pub fn get_match_plot_points(&self, data_type: PlotableValues, start_time: u64, duration: u64, x_size: f64, y_size: f64, max_value: &mut f64, team_id: u8) -> Result<Vec<[f64; 2]>, Box<dyn Error>>{
+    pub fn get_match_plot_points(&self, data_type: PlotableValues, start_time: i64, duration: i64, x_size: f64, y_size: f64, max_value: &mut f64, team_id: i64) -> Result<Vec<[f64; 2]>, Box<dyn Error>>{
         let mut points = Vec::new();
         let min_value = 0.0;
         let mut current_value = 0.0;
@@ -680,7 +619,7 @@ impl MatchTimeline{
         Ok(points)
     }
 
-    pub fn get_empatica_plot_points(points_vec: Vec<&LoLData>, start_time: u64, duration: u64, x_size: f64, y_size: f64, normalize: bool) -> Result<Vec<[f64; 2]>, Box<dyn Error>>{
+    pub fn get_empatica_plot_points(points_vec: Vec<&LoLData>, start_time: i64, duration: i64, x_size: f64, y_size: f64, normalize: bool) -> Result<Vec<[f64; 2]>, Box<dyn Error>>{
         let mut points = Vec::new();
         let mut min_value = f64::MAX;
         let mut max_value = f64::MIN;
@@ -756,7 +695,7 @@ pub struct MatchFrame{
     team_frames: Vec<MatchParticipantFrameDto>,
     opposing_team_frames: Vec<MatchParticipantFrameDto>,
     events: Vec<MatchEventDto>, 	
-    timestamp: u64,
+    timestamp: i64,
 }
 
 impl MatchFrame{
@@ -805,7 +744,7 @@ impl MatchFrame{
 
 #[derive(Clone,Debug, Deserialize, Eq)]
 pub struct LoLData{
-    pub time: u64,
+    pub time: i64,
     pub name: String,
     pub value: Variavel,
 }
@@ -832,13 +771,13 @@ impl PartialEq for LoLData {
 impl LoLData {
     pub fn new(time: time::Tm, name: String, value: Variavel) -> LoLData {
         LoLData{
-            time: LoLU::tm_to_milisec(time) as u64,
+            time: LoLU::tm_to_milisec(time) as i64,
             name,
             value,
         }
     }
 
-    pub fn new_timestamp(time: u64, name: String, value: Variavel) -> LoLData{
+    pub fn new_timestamp(time: i64, name: String, value: Variavel) -> LoLData{
         LoLData{
             time,//: time + 10800000,
             name,

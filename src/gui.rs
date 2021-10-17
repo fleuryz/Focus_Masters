@@ -8,7 +8,7 @@ use crate::support;
 use crate::teste::{Teste, Tipos};
 use crate::lol::{LoLU, User, LoLState, Settings, LoLSession};
 use crate::db_structures::{MatchData, MatchStats, MatchTimeline, PlotableValues, LoLData};
-use crate::lol_structs::{ChampionMasteryDTO, TeamStatsDto, ParticipantDto};
+use crate::lol_structs::{ChampionMasteryDTO, ParticipantDto, ObjectivesDto};
 use crate::empatica;
 
 use conrod;
@@ -49,10 +49,10 @@ pub struct Valores {
     num_cens: String,
     cenarios: Vec<String>,
     valores: Vec<String>,
-    pagina: u8,
+    pagina: i64,
     selecionado: u32,
-    ajuda: u8,
-    pagina_anterior: u8,
+    ajuda: i64,
+    pagina_anterior: i64,
 
     load: bool,
     lol_user: Option<LoLU>,
@@ -68,7 +68,7 @@ pub struct Valores {
 
     search_data: SearchData,
     found_matches: Vec<usize>,
-    match_selected: Option<u64>,
+    match_selected: Option<String>,
     timeline_view: bool,
 
     found_match: Option<MatchData>,
@@ -2053,7 +2053,7 @@ impl Gui {
                 //let (image, _) = valores.champions_image_map.get(&match_data.champion).unwrap();
                 let lane_image = valores.lane_sprites[match_data.role_num()];
     
-                match_card(ui, ids, number, image, &lane_image, match_data.match_time, match_data.start_date, match_data.win, match_data.season);
+                match_card(ui, ids, number, image, &lane_image, match_data.match_time, match_data.start_date, match_data.win);
                 number += 1;
             }
 
@@ -2444,7 +2444,7 @@ impl Gui {
                     .w_h(200.0, 50.0)
                     .set(ids.match_search_result[i], ui)
                     {
-                        valores.match_selected = Some(id);
+                        valores.match_selected = Some(id.clone());
 
                         let user = valores.lol_user.as_ref().unwrap();
 
@@ -2453,8 +2453,8 @@ impl Gui {
 
                         if match_stats.is_none() || match_timeline.is_none(){
                             let user = valores.lol_user.as_mut().unwrap();
-                            user.get_match_stats_db(id).unwrap();
-                            user.get_match_timeline_db(id).unwrap();
+                            user.get_match_stats_db(id.as_str()).unwrap();
+                            user.get_match_timeline_db(id.as_str()).unwrap();
                             let user = valores.lol_user.as_ref().unwrap();
                             //let match_found = &user.matches[valores.found_matches[search_index]];
                             valores.found_match = Some(user.matches.iter().find(|each_match| each_match._id == id).unwrap().clone());
@@ -2471,7 +2471,7 @@ impl Gui {
                 }
             }
 
-            if let Some(id) = valores.match_selected{
+            if let Some(id) = &valores.match_selected{
                 let label_view_toggle;
                 if valores.timeline_view{
                     label_view_toggle = "To General";
@@ -2505,7 +2505,7 @@ impl Gui {
                         .w_h(120.0, 40.0)
                         .set(ids.video_export, ui)
                     {
-                        LoLU::export_video(user_name, session, match_found.start_date, match_found.match_time, match_found._id);
+                        LoLU::export_video(user_name, session, match_found.start_date, match_found.match_time, match_found._id.as_str());
                     }
                 }
 
@@ -2943,7 +2943,7 @@ impl Gui {
             }
         }
 
-        fn match_card(ui: &mut conrod::UiCell, ids: &mut Ids, number: usize, hero_image: &conrod::image::Id, lane_image: &conrod::image::Id, match_duration: u64, match_start: u64, win: bool, season: u8) {
+        fn match_card(ui: &mut conrod::UiCell, ids: &mut Ids, number: usize, hero_image: &conrod::image::Id, lane_image: &conrod::image::Id, match_duration: i64, match_start: i64, win: bool) {
             use conrod::{
                 color, widget, Colorable, Labelable, Positionable, Sizeable, Widget,
             };
@@ -3007,13 +3007,6 @@ impl Gui {
                 .set(ids.match_card_duration[number], ui)
             ;
 
-            widget::Text::new(&format!("Season {}",season))
-                .mid_top_with_margin_on(ids.match_card_outline[number], 5.0)
-                .color(color::WHITE)
-                .font_size(24)
-                .set(ids.match_card_season[number], ui)
-            ;
-
             let result = match win{
                 true => "Won",
                 false => "Lost",
@@ -3026,7 +3019,7 @@ impl Gui {
             ;
         }
 
-        fn champion_card(ui: &mut conrod::UiCell, ids: &mut Ids, number: usize, hero_image: &conrod::image::Id, matches: u64, wins: u64, kda: f64, kp: f64, gp: f64){
+        fn champion_card(ui: &mut conrod::UiCell, ids: &mut Ids, number: usize, hero_image: &conrod::image::Id, matches: i64, wins: i64, kda: f64, kp: f64, gp: f64){
             use conrod::{
                 color, widget, Colorable, Labelable, Positionable, Sizeable, Widget,
             };
@@ -3130,7 +3123,7 @@ impl Gui {
             
         }
 
-        fn lane_card(ui: &mut conrod::UiCell, ids: &mut Ids, number: usize, lane_image: &conrod::image::Id, matches: u64, wins: u64, kda: f64, kp: f64, gp: f64){
+        fn lane_card(ui: &mut conrod::UiCell, ids: &mut Ids, number: usize, lane_image: &conrod::image::Id, matches: i64, wins: i64, kda: f64, kp: f64, gp: f64){
             use conrod::{
                 color, widget, Colorable, Labelable, Positionable, Sizeable, Widget,
             };
@@ -3242,7 +3235,7 @@ impl Gui {
             let player_team_stats;
             let opposing_team_stats;
 
-            if match_data.team_id == match_stats.stats[0].teamId{
+            if match_data.team_id == match_stats.stats[0].teamId as i64{
                 player_team_stats = &match_stats.stats[0];
                 opposing_team_stats = &match_stats.stats[1];
             }else{
@@ -3251,23 +3244,27 @@ impl Gui {
             }
             let mut player_team_kills = 0;
             let mut opposing_team_kills = 0;
+            let mut player_team_first_kill = false;
             for player in &match_stats.participant_stats{
-                if player.teamId == match_data.team_id{
-                    player_team_kills += player.stats.kills;
+                if player.teamId == match_data.team_id as i64{
+                    player_team_kills += player.kills;
+                    if player.firstBloodKill{
+                        player_team_first_kill = true;
+                    }
                 }else{
-                    opposing_team_kills += player.stats.kills;
+                    opposing_team_kills += player.kills;
                 }
             }
 
-            draw_team_stats(ui, ids, player_team_stats, player_team_kills, 0.0);
-            draw_team_stats(ui, ids, opposing_team_stats, opposing_team_kills, 1000.0);
+            draw_team_stats(ui, ids, &player_team_stats.objectives, player_team_kills, 0.0, match_data.win, player_team_stats.teamId, player_team_first_kill);
+            draw_team_stats(ui, ids, &opposing_team_stats.objectives, opposing_team_kills, 1000.0, !match_data.win, opposing_team_stats.teamId, !player_team_first_kill);
             let mut player_team_number = 0;
             let mut opposing_team_number = 0;
             
             for player in &match_stats.participant_stats{
-                let player_name = match_stats.participant_identities.iter().find( |identity| identity.participant_id == player.participantId).unwrap().player_name.as_str();
+                let player_name = player.summonerName.as_str();
 
-                if player.teamId == match_data.team_id{
+                if player.teamId == match_data.team_id as i64{
                     draw_player_stats(ui, ids, player, player_team_number, player_name, 0.0, settings, display_data);
                     player_team_number += 1;
                 }else{
@@ -3788,17 +3785,17 @@ impl Gui {
                 }
 
                 /*
-                pub hapinness: Option<u8>,
+                pub hapinness: Option<i64>,
                 pub hapinness_values: Vec<[f64;2]>,
-                pub sadness: Option<u8>,
+                pub sadness: Option<i64>,
                 pub sadness_values: Vec<[f64;2]>,
-                pub anger: Option<u8>,
+                pub anger: Option<i64>,
                 pub anger_values: Vec<[f64;2]>,
-                pub fear: Option<u8>,
+                pub fear: Option<i64>,
                 pub fear_values: Vec<[f64;2]>,
-                pub surprise: Option<u8>,
+                pub surprise: Option<i64>,
                 pub surprise_values: Vec<[f64;2]>,
-                pub disgust: Option<u8>,
+                pub disgust: Option<i64>,
                 pub disgust_values: Vec<[f64;2]>,
                 */
 
@@ -4067,16 +4064,16 @@ impl Gui {
                 .set(ids.point_path, ui);*/
         }
 
-        fn draw_team_stats(ui: &mut conrod::UiCell, ids: &mut Ids, team_stats: &TeamStatsDto, kills: u64, offset: f64){
+        fn draw_team_stats(ui: &mut conrod::UiCell, ids: &mut Ids, team_stats: &ObjectivesDto, kills: i64, offset: f64, win: bool, team_id: i64, first_kill: bool){
             use conrod::{
                 color, widget, Colorable, Labelable, Positionable, Sizeable, Widget,
             };
 
             let result;
-            if team_stats.win.is_some(){
-                result = team_stats.win.as_ref().unwrap().as_str();
+            if win{
+                result = "Won";
             }else{
-                result = "Draw";
+                result = "Lost";
             }
 
             let index;
@@ -4093,7 +4090,7 @@ impl Gui {
                 .set(ids.match_result[index], ui)
             ;
 
-            let color = match team_stats.teamId{
+            let color = match team_id{
                 100 => "Blue",
                 _ => "Red",
             };
@@ -4103,7 +4100,7 @@ impl Gui {
                 .font_size(24)
                 .set(ids.match_team_color[index], ui)
             ;
-            widget::Text::new(&format!("First Blood: {}", team_stats.firstBlood))
+            widget::Text::new(&format!("First Blood: {}", first_kill))
                 .top_left_with_margins_on(ids.right_column, 40.0, 20.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
@@ -4115,61 +4112,61 @@ impl Gui {
                 .font_size(24)
                 .set(ids.team_kills[index], ui)
             ;
-            widget::Text::new(&format!("First Tower: {}", team_stats.firstTower))
+            widget::Text::new(&format!("First Tower: {}", team_stats.tower.first))
                 .top_left_with_margins_on(ids.right_column, 60.0, 20.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.first_tower[index], ui)
             ;
-            widget::Text::new(&format!("Tower Kills: {}", team_stats.towerKills))
+            widget::Text::new(&format!("Tower Kills: {}", team_stats.tower.kills))
                 .top_left_with_margins_on(ids.right_column, 60.0, 300.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.tower_kills[index], ui)
             ;
-            widget::Text::new(&format!("First Inhibitor: {}", team_stats.firstInhibitor))
+            widget::Text::new(&format!("First Inhibitor: {}", team_stats.inhibitor.first))
                 .top_left_with_margins_on(ids.right_column, 80.0, 20.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.first_inhibitor[index], ui)
             ;
-            widget::Text::new(&format!("Inhibitor Kills: {}", team_stats.inhibitorKills))
+            widget::Text::new(&format!("Inhibitor Kills: {}", team_stats.inhibitor.kills))
                 .top_left_with_margins_on(ids.right_column, 80.0, 300.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.inhibitor_kills[index], ui)
             ;
-            widget::Text::new(&format!("First Dragon: {}", team_stats.firstDragon))
+            widget::Text::new(&format!("First Dragon: {}", team_stats.dragon.first))
                 .top_left_with_margins_on(ids.right_column, 100.0, 20.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.first_dragon[index], ui)
             ;
-            widget::Text::new(&format!("Dragon Kills: {}", team_stats.dragonKills))
+            widget::Text::new(&format!("Dragon Kills: {}", team_stats.dragon.kills))
                 .top_left_with_margins_on(ids.right_column, 100.0, 300.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.dragon_kills[index], ui)
             ;
-            widget::Text::new(&format!("First Baron: {}", team_stats.firstBaron))
+            widget::Text::new(&format!("First Baron: {}", team_stats.baron.first))
                 .top_left_with_margins_on(ids.right_column, 120.0, 20.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.first_baron[index], ui)
             ;
-            widget::Text::new(&format!("Baron Kills: {}", team_stats.baronKills))
+            widget::Text::new(&format!("Baron Kills: {}", team_stats.baron.kills))
                 .top_left_with_margins_on(ids.right_column, 120.0, 300.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.baron_kills[index], ui)
             ;
-            widget::Text::new(&format!("First Rift Herald: {}", team_stats.firstRiftHerald))
+            widget::Text::new(&format!("First Rift Herald: {}", team_stats.riftHerald.first))
                 .top_left_with_margins_on(ids.right_column, 140.0, 20.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.first_herald[index], ui)
             ;
-            widget::Text::new(&format!("Rift Herald Kills: {}", team_stats.riftHeraldKills))
+            widget::Text::new(&format!("Rift Herald Kills: {}", team_stats.riftHerald.kills))
                 .top_left_with_margins_on(ids.right_column, 140.0, 300.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
@@ -4177,11 +4174,11 @@ impl Gui {
             ;
         }
 
-        fn draw_player_stats(ui: &mut conrod::UiCell, ids: &mut Ids, player_stats: &ParticipantDto, player_number: u8, player_name: &str, offset: f64, settings: &Settings, display_data: &mut DisplayData){
+        fn draw_player_stats(ui: &mut conrod::UiCell, ids: &mut Ids, player_stats: &ParticipantDto, player_number: i64, player_name: &str, offset: f64, settings: &Settings, display_data: &mut DisplayData){
             use conrod::{
                 color, widget, Colorable, Labelable, Positionable, Sizeable, Widget,
             };
-            let team = (offset/1000.0) as u8 ;
+            let team = (offset/1000.0) as i64 ;
             //Imagem do campeão
             let image = settings.get_champion_image(player_stats.championId as u32, display_data).unwrap();
             widget::Image::new(*image)
@@ -4190,7 +4187,7 @@ impl Gui {
                 .set(ids.player_image[(player_number + 5*team) as usize], ui)
             ;
             //Level final
-            widget::Text::new(&format!("Lv. {}", player_stats.stats.champLevel))
+            widget::Text::new(&format!("Lv. {}", player_stats.champLevel))
                 .top_left_with_margins_on(ids.right_column, (player_number as f64 * 120.0) + 270.0, 120.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
@@ -4204,84 +4201,84 @@ impl Gui {
                 .set(ids.player_name[(player_number + 5*team) as usize], ui)
             ;
             //Kills
-            widget::Text::new(&format!("{}", player_stats.stats.kills))
+            widget::Text::new(&format!("{}", player_stats.kills))
                 .top_left_with_margins_on(ids.right_column, (player_number as f64 * 120.0) + 200.0, 400.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.player_kills[(player_number + 5*team) as usize], ui)
             ;
             //Deaths
-            widget::Text::new(&format!("{}", player_stats.stats.deaths))
+            widget::Text::new(&format!("{}", player_stats.deaths))
                 .top_left_with_margins_on(ids.right_column, (player_number as f64 * 120.0) + 200.0, 450.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.player_deaths[(player_number + 5*team) as usize], ui)
             ;
             //Assists
-            widget::Text::new(&format!("{}", player_stats.stats.assists))
+            widget::Text::new(&format!("{}", player_stats.assists))
                 .top_left_with_margins_on(ids.right_column, (player_number as f64 * 120.0) + 200.0, 500.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.player_assists[(player_number + 5*team) as usize], ui)
             ;
             //Ouro ganho
-            widget::Text::new(&format!("{:2},{:0<3}", player_stats.stats.goldEarned/1000, player_stats.stats.goldEarned%1000))
+            widget::Text::new(&format!("{:2},{:0<3}", player_stats.goldEarned/1000, player_stats.goldEarned%1000))
                 .top_left_with_margins_on(ids.right_column, (player_number as f64 * 120.0) + 200.0, 550.0 + offset)
                 .color(color::WHITE)
                 .font_size(24)
                 .set(ids.player_gold[(player_number + 5*team) as usize], ui)
             ;
             //Itens comprados
-            if player_stats.stats.item0 != 0{
-                let image = settings.get_item_image(player_stats.stats.item0 as u32, display_data);
+            if player_stats.item0 != 0{
+                let image = settings.get_item_image(player_stats.item0 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 400.0 + offset)
                     .set(ids.player_itens[0 + 7*(player_number + 5*team) as usize], ui)
                 ;
             }
-            if player_stats.stats.item1 != 0{
-                let image = settings.get_item_image(player_stats.stats.item1 as u32, display_data);
+            if player_stats.item1 != 0{
+                let image = settings.get_item_image(player_stats.item1 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 425.0 + offset)
                     .set(ids.player_itens[1 + 7*(player_number + 5*team) as usize], ui)
                 ;
             }
-            if player_stats.stats.item2 != 0{
-                let image = settings.get_item_image(player_stats.stats.item2 as u32, display_data);
+            if player_stats.item2 != 0{
+                let image = settings.get_item_image(player_stats.item2 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 450.0 + offset)
                     .set(ids.player_itens[2 + 7*(player_number + 5*team) as usize], ui)
                 ;
             }
-            if player_stats.stats.item3 != 0{
-                let image = settings.get_item_image(player_stats.stats.item3 as u32, display_data);
+            if player_stats.item3 != 0{
+                let image = settings.get_item_image(player_stats.item3 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 475.0 + offset)
                     .set(ids.player_itens[3 + 7*(player_number + 5*team) as usize], ui)
                 ;
             }
-            if player_stats.stats.item4 != 0{
-                let image = settings.get_item_image(player_stats.stats.item4 as u32, display_data);
+            if player_stats.item4 != 0{
+                let image = settings.get_item_image(player_stats.item4 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 500.0 + offset)
                     .set(ids.player_itens[4 + 7*(player_number + 5*team) as usize], ui)
                 ;
             }
-            if player_stats.stats.item5 != 0{
-                let image = settings.get_item_image(player_stats.stats.item5 as u32, display_data);
+            if player_stats.item5 != 0{
+                let image = settings.get_item_image(player_stats.item5 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 525.0 + offset)
                     .set(ids.player_itens[5 + 7*(player_number + 5*team) as usize], ui)
                 ;
             }
-            if player_stats.stats.item6 != 0{
-                let image = settings.get_item_image(player_stats.stats.item6 as u32, display_data);
+            if player_stats.item6 != 0{
+                let image = settings.get_item_image(player_stats.item6 as u32, display_data);
                 widget::Image::new(*image)
                     .w_h(20.0, 20.0)
                     .top_left_with_margins_on(ids.right_column,  (player_number as f64 * 120.0) + 270.0, 550.0 + offset)
@@ -4634,36 +4631,36 @@ pub struct DisplayData{
 }
 
 pub struct PlotData{
-    pub times: Option<(u64, u64)>,
+    pub times: Option<(i64, i64)>,
     pub max_value: f64,
 
-    pub kills: Option<u8>,
+    pub kills: Option<i64>,
     pub kills_values: Vec<[f64;2]>,
-    pub deaths: Option<u8>,
+    pub deaths: Option<i64>,
     pub deaths_values: Vec<[f64;2]>,
-    pub assists: Option<u8>,
+    pub assists: Option<i64>,
     pub assists_values: Vec<[f64;2]>,
-    pub barons: Option<u8>,
+    pub barons: Option<i64>,
     pub barons_values: Vec<[f64;2]>,
-    pub dragons: Option<u8>,
+    pub dragons: Option<i64>,
     pub dragons_values: Vec<[f64;2]>,
-    pub hr: Option<u8>,
+    pub hr: Option<i64>,
     pub hr_values: Vec<[f64;2]>,
-    pub gsr: Option<u8>,
+    pub gsr: Option<i64>,
     pub gsr_values: Vec<[f64;2]>,
-    pub bvp: Option<u8>,
+    pub bvp: Option<i64>,
     pub bvp_values: Vec<[f64;2]>,
-    pub happiness: Option<u8>,
+    pub happiness: Option<i64>,
     pub happiness_values: Vec<[f64;2]>,
-    pub sadness: Option<u8>,
+    pub sadness: Option<i64>,
     pub sadness_values: Vec<[f64;2]>,
-    pub anger: Option<u8>,
+    pub anger: Option<i64>,
     pub anger_values: Vec<[f64;2]>,
-    pub fear: Option<u8>,
+    pub fear: Option<i64>,
     pub fear_values: Vec<[f64;2]>,
-    pub surprise: Option<u8>,
+    pub surprise: Option<i64>,
     pub surprise_values: Vec<[f64;2]>,
-    pub disgust: Option<u8>,
+    pub disgust: Option<i64>,
     pub disgust_values: Vec<[f64;2]>,
 }
 impl PlotData{
@@ -4703,7 +4700,7 @@ impl PlotData{
         }
     }
 
-    pub fn get_color(color_num:u8)->color::Color{
+    pub fn get_color(color_num:i64)->color::Color{
         match color_num{
             0=> color::BLUE,
             1=> color::GREEN,
