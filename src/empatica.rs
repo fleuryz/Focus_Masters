@@ -14,7 +14,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Clone,Debug)]
 pub struct Signal_Data{
     pub start_timestamp: f64,
-    pub frequency: u64,
+    pub frequency: i64,
     pub data_vec: Vec<f64>,
 }
 
@@ -28,7 +28,7 @@ impl Signal_Data{
 
         let start_timestamp: f64 = data_string.parse()?;
         let data_string = data.next().unwrap();
-        let frequency: u64 = data_string.parse::<f64>()? as u64;
+        let frequency: i64 = data_string.parse::<f64>()? as i64;
 
         let mut data_vec: Vec<f64> = Vec::new();
         for line in data{
@@ -52,9 +52,9 @@ impl Signal_Data{
         let start_timestamp_z: f64 = timestamps[2].trim().parse()?;
 
         let frequencies: Vec<&str> = data.next().unwrap().split(",").collect();
-        let frequency_x: u64 = frequencies[0].trim().parse::<f64>()? as u64;
-        let frequency_y: u64 = frequencies[1].trim().parse::<f64>()? as u64;
-        let frequency_z: u64 = frequencies[2].trim().parse::<f64>()? as u64;
+        let frequency_x: i64 = frequencies[0].trim().parse::<f64>()? as i64;
+        let frequency_y: i64 = frequencies[1].trim().parse::<f64>()? as i64;
+        let frequency_z: i64 = frequencies[2].trim().parse::<f64>()? as i64;
 
         let mut data_vec_x: Vec<f64> = Vec::new();
         let mut data_vec_y: Vec<f64> = Vec::new();
@@ -87,7 +87,7 @@ impl Signal_Data{
             if time < start_time || time > end_time{
                 continue;
             }
-            lol_data_vec.push(LoLData::new_timestamp(time as u64, name.into(), Variavel::Float(*data)));
+            lol_data_vec.push(LoLData::new_timestamp(time as i64, name.into(), Variavel::Float(*data)));
         }
 
         Ok(lol_data_vec)
@@ -130,7 +130,7 @@ impl Signal_Data{
             }else{
                 value = Variavel::Float(0.0);
             }
-            lol_data_vec.push(LoLData::new_timestamp(time as u64, "eda".into(), value));
+            lol_data_vec.push(LoLData::new_timestamp(time as i64, "eda".into(), value));
         }
 
         Ok(lol_data_vec)
@@ -220,7 +220,7 @@ impl Signal_Data{
             }else{
                 value = Variavel::Float(0.0);
             }
-            hr_data_vec.push(LoLData::new_timestamp(time as u64, "hr".into(), value));
+            hr_data_vec.push(LoLData::new_timestamp(time as i64, "hr".into(), value));
         }
 
         for i in 0..heart_rate_variance.len()
@@ -244,7 +244,7 @@ impl Signal_Data{
             }else{
                 value = Variavel::Float(0.0);
             }
-            hrv_data_vec.push(LoLData::new_timestamp(time as u64, "hrv".into(), value));
+            hrv_data_vec.push(LoLData::new_timestamp(time as i64, "hrv".into(), value));
         }
 
         Ok((hr_data_vec, hrv_data_vec))
@@ -291,7 +291,7 @@ impl IBI_Data{
             if data.beat < start_time || data.beat > end_time{
                 break;
             }
-            lol_data_vec.push(LoLData::new_timestamp(data.beat as u64, name.into(), Variavel::Float(data.duration)));
+            lol_data_vec.push(LoLData::new_timestamp(data.beat as i64, name.into(), Variavel::Float(data.duration)));
 
             i += 1;
         }
